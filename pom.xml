@@ -9,9 +9,35 @@
     <version>1.0-SNAPSHOT</version>
 
     <properties>
-        <maven.compiler.source>23</maven.compiler.source>
-        <maven.compiler.target>23</maven.compiler.target>
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    </properties>
+    <maven.compiler.release>24.0.1</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+</properties>
 
+    <dependencies>
+        <!-- JavaFX dependency -->
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-controls</artifactId>
+            <version>24.0.1</version> <!-- Usa la versión correcta -->
+        </dependency>
+
+        <!-- JavaFX FXML dependency -->
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-fxml</artifactId>
+            <version>24.0.1</version> <!-- Usa la versión correcta -->
+        </dependency>
+    </dependencies>
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.openjfx</groupId>
+                <artifactId>javafx-maven-plugin</artifactId>
+                <version>0.1.5</version>
+                <configuration>
+                    <mainClass>org.example.BarberiaApp</mainClass>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
 </project>

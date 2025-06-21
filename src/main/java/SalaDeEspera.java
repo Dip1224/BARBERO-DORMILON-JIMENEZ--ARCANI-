@@ -3,28 +3,35 @@ import java.util.Queue;
 import java.util.concurrent.Semaphore;
 
 public class SalaDeEspera {
-    private Queue<Cliente> colaDeEspera;
-    private Semaphore sillas;
+    private final Queue<Cliente> colaDeEspera;
+    private final Semaphore sillas;  // Control de sillas disponibles
 
     public SalaDeEspera(int capacidad) {
         colaDeEspera = new LinkedList<>();
         sillas = new Semaphore(capacidad, true); // Las sillas disponibles
     }
 
-    public synchronized void agregarCliente(Cliente cliente) {
-        if (sillas.availablePermits() > 0) {
-            colaDeEspera.add(cliente);
-            System.out.println(cliente.getNombre() + " se sentó.");
-            sillas.release(); // Un cliente ocupa una silla
-        } else {
-            System.out.println(cliente.getNombre() + " se fue porque no hay lugar.");
+    // Método para agregar un cliente a la sala de espera
+    public void agregarCliente(Cliente cliente) {
+        try {
+            if (sillas.availablePermits() > 0) {
+                sillas.acquire(); // Intentar adquirir una silla
+                colaDeEspera.add(cliente);
+                System.out.println(cliente.getNombre() + " se sentó.");
+            } else {
+                System.out.println(cliente.getNombre() + " no pudo sentarse, no hay sillas disponibles.");
+            }
+        } catch (InterruptedException e) {
+            System.err.println("Error al agregar cliente a la sala de espera: " + e.getMessage());
         }
     }
 
-    public synchronized Cliente obtenerCliente() {
+    // Método para obtener un cliente de la sala de espera
+    public Cliente obtenerCliente() {
         if (!colaDeEspera.isEmpty()) {
             Cliente cliente = colaDeEspera.poll();
-            sillas.acquireUninterruptibly(); // Barbero está atendiendo
+            sillas.release(); // Liberar la silla después de que el cliente es atendido
+            System.out.println(cliente.getNombre() + " ha sido atendido y ha dejado su silla.");
             return cliente;
         }
         return null;

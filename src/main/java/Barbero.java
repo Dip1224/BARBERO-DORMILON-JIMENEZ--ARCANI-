@@ -8,28 +8,35 @@ public class Barbero extends Thread {
     @Override
     public void run() {
         while (true) {
-            if (!ocupado) {
-                System.out.println("El barbero está esperando clientes...");
-                try {
-                    Thread.sleep(2000); // El barbero espera por 2 segundos antes de ir a atender
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
+            synchronized (this) {
+                if (!ocupado) {
+                    System.out.println("El barbero está esperando clientes...");
+                    try {
+                        wait(); // El barbero espera hasta que haya un cliente
+                    } catch (InterruptedException e) {
+                        System.err.println("Interrupted while atendiendo al cliente: " + e.getMessage());
+                    }
+                } else {
+                    System.out.println("El barbero está atendiendo.");
                 }
-            } else {
-                System.out.println("El barbero está atendiendo.");
             }
         }
     }
 
     public void atenderCliente(Cliente cliente) {
-        ocupado = true;
-        System.out.println("Atendiendo a: " + cliente.getNombre());
+        synchronized (this) {
+            ocupado = true;
+            System.out.println("Atendiendo a: " + cliente.getNombre());
+        }
         try {
             Thread.sleep(5000); // El tiempo de atención (5 segundos)
         } catch (InterruptedException e) {
-            e.printStackTrace();
+            System.err.println("Interrupted while atendiendo al cliente: " + e.getMessage());
         }
-        ocupado = false;
-        System.out.println("Cliente " + cliente.getNombre() + " atendido.");
+        synchronized (this) {
+            ocupado = false;
+            System.out.println("Cliente " + cliente.getNombre() + " atendido.");
+            notify(); // Notifica al hilo principal que el barbero está disponible nuevamente
+        }
     }
 }

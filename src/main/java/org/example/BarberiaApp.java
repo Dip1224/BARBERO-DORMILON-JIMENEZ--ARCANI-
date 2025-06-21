@@ -1,3 +1,5 @@
+package org.example;
+
 import javafx.application.Application;
 import javafx.scene.Scene;
 import javafx.scene.control.Label;
@@ -20,7 +22,8 @@ public class BarberiaApp extends Application {
         primaryStage.show();
     }
 
+    // Método main debe estar definido de esta manera
     public static void main(String[] args) {
-        launch(args);
+        launch(args); // Inicia la aplicación JavaFX
     }
 }

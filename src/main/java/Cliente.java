@@ -1,7 +1,7 @@
-public class Cliente extends Thread {
-    private String nombre;
-    private boolean esVIP;
-    private int tiempoEspera; // en segundos
+public class Cliente implements Runnable {
+    private final String nombre;
+    private final boolean esVIP;
+    private final int tiempoEspera; // en segundos
 
     public Cliente(String nombre, boolean esVIP) {
         this.nombre = nombre;
@@ -16,7 +16,7 @@ public class Cliente extends Thread {
             Thread.sleep(tiempoEspera * 1000); // Simula el tiempo de espera
             System.out.println(nombre + " está siendo atendido.");
         } catch (InterruptedException e) {
-            e.printStackTrace();
+            System.err.println("El hilo del cliente fue interrumpido: " + e.getMessage());
         }
     }
 
@@ -26,5 +26,10 @@ public class Cliente extends Thread {
 
     public boolean isVIP() {
         return esVIP;
+    }
+
+    // Método para simular que el cliente llega a la sala
+    public synchronized void agregarACola(SalaDeEspera sala) {
+        sala.agregarCliente(this);
     }
 }
