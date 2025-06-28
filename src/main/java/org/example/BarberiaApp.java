@@ -2,15 +2,19 @@ package org.example;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 
 import javafx.animation.KeyFrame;
 import javafx.animation.Timeline;
 import javafx.application.Application;
+import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
+import javafx.scene.control.ListView;
 import javafx.scene.control.ProgressBar;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
@@ -27,15 +31,17 @@ public class BarberiaApp extends Application {
     // Variables de instancia para acceso entre métodos
     private boolean cajaOcupada = false;
     private ImageView clientesEnCaja; // Cliente en la caja (inicialmente invisible)
-   
+
     private double totalAcumulado = 0; // Dinero total ganado
  // Variables para el contador de clientes, dinero acumulado y dinero de los barberos
-private int clienteContador = 1; // Comienza con 1
-private double[] dineroBarberos = {0, 0, 0}; // Dinero ganado por cada barbero
+private int clienteContador = 1;
+private final java.util.Map<ImageView, Integer> clienteNumeros = new java.util.HashMap<>();
 
+private final double[] dineroBarberos = {0, 0, 0}; // Dinero ganado por cada barbero
 
-
-
+private Label barbero1 = new Label("Barbero 1: $0");
+private Label barbero2 = new Label("Barbero 2: $0");
+private Label barbero3 = new Label("Barbero 3: $0");
   
     //private int[] dineroBarberos = new int[3]; // Cantidad de dinero que cada barbero ha ganado
 
@@ -65,7 +71,9 @@ private double[] dineroBarberos = {0, 0, 0}; // Dinero ganado por cada barbero
     @Override
     public void start(Stage primaryStage) {
 // Método de pago y cobro
-
+barbero1.setText("Barbero 1: $0");
+barbero2.setText("Barbero 2: $0");
+barbero3.setText("Barbero 3: $0");
 
         VBox root = new VBox(20);
         root.setStyle("-fx-background-color: #b0b0b0;"); // Fondo plomo
@@ -78,7 +86,7 @@ private double[] dineroBarberos = {0, 0, 0}; // Dinero ganado por cada barbero
 
         // Título principal
         Label titulo = new Label("LA MAFIA");
-        titulo.setStyle("-fx-font-size: 32px; -fx-font-weight: bold; -fx-text-fill: #222;");
+        titulo.setStyle("-fx-font-size: 44px; -fx-font-weight: bold; -fx-text-fill: #222;");
 
         // HBox solo para la imagen a la izquierda
         HBox barraImagen = new HBox(barberoView);
@@ -163,9 +171,20 @@ private double[] dineroBarberos = {0, 0, 0}; // Dinero ganado por cada barbero
 
         // Botón para crear cliente
         Button btnCrearCliente = new Button("Crear Cliente");
+        Button btnCrearClientePrioridad = new Button("Crear Cliente Prioridad");
+btnCrearCliente.setStyle("-fx-font-size: 16px; -fx-background-color: #e67e22; -fx-text-fill: white; -fx-pref-width: 180px; -fx-pref-height: 40px;");
+btnCrearClientePrioridad.setStyle("-fx-font-size: 16px; -fx-background-color: #e67e22; -fx-text-fill: white; -fx-pref-width: 180px; -fx-pref-height: 40px;");
 
-        // VBox para sofá (siempre visible) y botón juntos, centrados
-        VBox sofaYBoton = new VBox(10, sofaStack, btnCrearCliente);
+        // HBox para los botones de crear cliente
+        HBox botonesClientes = new HBox(10, btnCrearCliente, btnCrearClientePrioridad);
+        botonesClientes.setAlignment(Pos.CENTER);
+
+        // VBox para mostrar la información de los barberos
+        VBox barberosInfo = new VBox(5, barbero1, barbero2, barbero3);
+        barberosInfo.setAlignment(Pos.CENTER);
+
+        // VBox para sofá (siempre visible), botón y barberosInfo juntos, centrados
+        VBox sofaYBoton = new VBox(10, sofaStack, botonesClientes, barberosInfo);
         sofaYBoton.setAlignment(Pos.CENTER);
         HBox.setHgrow(sofaYBoton, Priority.ALWAYS); // Esto permite que el sofá se expanda y quede centrado
 
@@ -203,35 +222,31 @@ Label labelCaja = new Label("CAJA REGISTRADORA");
 labelCaja.setStyle("-fx-font-size: 18px; -fx-font-weight: bold; -fx-text-fill: #333;");
 
  // Crear un Label para "Cobrando a Cliente"
-        labelCobrandoCliente = new Label("Cobrando a Cliente: " + clienteContador);
+        labelCobrandoCliente = new Label("Cobrando a Cliente: ");
         labelCobrandoCliente.setStyle("-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #333;");
 
         // Crear un Label para "El Barbero"
-        labelElBarbero = new Label("El Barbero: " + 1); // Esto se actualizará dinámicamente
+        labelElBarbero = new Label("El Barbero: "); // Esto se actualizará dinámicamente
         labelElBarbero.setStyle("-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #333;");
 
         // Crear un Label para el total acumulado
-        labelTotalAcumulado = new Label("Total Acumulado: $" + totalAcumulado);
-        labelTotalAcumulado.setStyle("-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #333;");
+        labelTotalAcumulado = new Label("Total Acumulado: $0");
+        labelTotalAcumulado.setStyle("-fx-font-size: 22px; -fx-font-weight: 900; -fx-text-fill: #111; -fx-font-family: 'Arial Black', Arial, sans-serif;");
 
 
 
         // Cuando el cliente paga
 labelCobrandoCliente.setText("Cobrando a Cliente: " + clienteContador);
 labelElBarbero.setText("El Barbero: " + (1));  // Aquí puedes asociar el número del barbero o la silla
-totalAcumulado += 50;  // Actualiza el total acumulado de dinero (suponiendo que el precio por corte es 50)
-labelTotalAcumulado.setText("Total Acumulado: $" + totalAcumulado);
     
 
 
 
 // Mostrar el dinero ganado por cada barbero
-Label barbero1 = new Label("Barbero 1: $" + dineroBarberos[0]);
-Label barbero2 = new Label("Barbero 2: $" + dineroBarberos[1]);
-Label barbero3 = new Label("Barbero 3: $" + dineroBarberos[2]);
+barbero1.setText("Barbero 1: $" + dineroBarberos[0]);
+barbero2.setText("Barbero 2: $" + dineroBarberos[1]);
+barbero3.setText("Barbero 3: $" + dineroBarberos[2]);
 
-VBox barberosInfo = new VBox(5, barbero1, barbero2, barbero3);
-barberosInfo.setAlignment(Pos.CENTER);
 
 
         // StackPane solo para la caja y el cliente
@@ -271,14 +286,38 @@ barberosInfo.setAlignment(Pos.CENTER);
         root.setPadding(new Insets(30, 0, 0, 0));
         // Agregar barraImagen y título en una HBox para la barra superior
         HBox barraSuperior = new HBox(20, barraImagen, titulo);
-        barraSuperior.setAlignment(Pos.CENTER_LEFT);
-        barraSuperior.setPadding(new Insets(0, 0, 0, 40));
+        barraSuperior.setAlignment(Pos.CENTER); // <-- Centrado
+barraSuperior.setPadding(new Insets(0, 0, 0, 0)); // Sin margen izquierdo extra
+
+        // Título para la tabla VIP
+        Label tituloVIP = new Label("Clientes VIP");
+        tituloVIP.setStyle("-fx-font-size: 18px; -fx-font-weight: bold; -fx-text-fill: #333;");
+
+        ObservableList<String> listaVIP = FXCollections.observableArrayList(
+    "Rivera", "Peluchín", "Darwin Menacho"
+);
+ListView<String> tablaVIP = new ListView<>(listaVIP);
+tablaVIP.setPrefSize(150, 90);
+tablaVIP.setStyle("-fx-background-color: rgba(255,255,255,0.7); -fx-border-color: #e67e22;");
+
+VBox vboxVIP = new VBox(5, tituloVIP, tablaVIP);
+vboxVIP.setAlignment(Pos.TOP_CENTER);
+vboxVIP.setPadding(new Insets(10));
+vboxVIP.setStyle("-fx-background-color: transparent;");
+
+// Agrega vboxVIP a la barra superior
+Region espaciadorVIP = new Region();
+HBox.setHgrow(espaciadorVIP, Priority.ALWAYS);
+
+HBox filaSuperior = new HBox(20, barraSuperior, espaciadorVIP, vboxVIP);
+filaSuperior.setAlignment(Pos.TOP_LEFT);
+filaSuperior.setPadding(new Insets(0, 40, 0, 40));
 
         // AGREGA LOS COMPONENTES AL ROOT
         root.getChildren().addAll(
-            barraSuperior,      // Barra superior con imagen y título
-            sillonesBarbero,    // Sillas de barbero con barras de progreso
-            espaciadorVertical, // Espaciador para empujar la fila inferior hacia abajo
+            filaSuperior,         // Ahora la barra superior y la tabla VIP
+            sillonesBarbero,
+            espaciadorVertical,
             filaInferior        // Fila inferior: sala de espera, sofá, caja
         );
 
@@ -314,29 +353,72 @@ barberosInfo.setAlignment(Pos.CENTER);
         // Acción del botón
         btnCrearCliente.setOnAction(_ -> {
             if (clienteActual[0] > 6) clienteActual[0] = 1;
+            // Saltar persona3.png
+            if (clienteActual[0] == 3) clienteActual[0] = 4;
             String imgPath = "/img/persona" + clienteActual[0] + ".png";
             ImageView nuevoCliente = new ImageView(new Image(getClass().getResourceAsStream(imgPath)));
             nuevoCliente.setFitWidth(60);
             nuevoCliente.setFitHeight(90);
             clientes.add(nuevoCliente);
+            clienteNumeros.put(nuevoCliente, clienteContador);
+            clienteContador++;
+
             clienteActual[0]++;
+            if (clienteActual[0] == 3) clienteActual[0] = 4; // Saltar el 3 también al avanzar
 
             // Intentar sentar al cliente en una silla libre
-            boolean sentado = false;
             for (int i = 0; i < 3; i++) {
                 if (sillasOcupadas.get(i) == null) {
                     sillasOcupadas.set(i, nuevoCliente);
                     barrasProgreso.get(i).setProgress(0);
                     timelines.get(i).playFromStart();
-                    // Mostrar cliente en la silla correspondiente
                     clientesEnSilla.get(i).setImage(nuevoCliente.getImage());
+                    clientesEnSilla.get(i).setFitWidth(60);
+                    clientesEnSilla.get(i).setFitHeight(90);
+                    clientesEnSilla.get(i).setVisible(true);
+                    break;
+                }
+            }
+            actualizarSofaYEspera.run();
+        });
+
+        // Acción del botón de cliente prioritario
+        btnCrearClientePrioridad.setOnAction(_ -> {
+            String[] opciones = {
+                "/img/persona3.png", 
+                "/img/rivera.png", 
+                "/img/peluchin.png", 
+                "/img/darwin Menacho.png"
+            };
+            Random random = new Random();
+            String imgPath = opciones[random.nextInt(opciones.length)];
+            ImageView clientePrioridad = new ImageView(new Image(getClass().getResourceAsStream(imgPath)));
+            clientePrioridad.setFitWidth(60);
+            clientePrioridad.setFitHeight(90);
+            clientes.add(clientePrioridad);
+            clienteNumeros.put(clientePrioridad, clienteContador);
+            clienteContador++;
+
+            // Busca la primera silla libre y lo sienta de inmediato
+            boolean sentado = false;
+            for (int i = 0; i < 3; i++) {
+                if (sillasOcupadas.get(i) == null) {
+                    sillasOcupadas.set(i, clientePrioridad);
+                    barrasProgreso.get(i).setProgress(0);
+                    timelines.get(i).playFromStart();
+                    clientesEnSilla.get(i).setImage(clientePrioridad.getImage());
+                    clientesEnSilla.get(i).setFitWidth(60);
+                    clientesEnSilla.get(i).setFitHeight(90);
                     clientesEnSilla.get(i).setVisible(true);
                     sentado = true;
                     break;
                 }
             }
-
-            // Actualiza sofá y sala de espera
+            // Si no hay silla libre, lo inserta en una posición aleatoria entre los primeros 4 del sofá
+            if (!sentado) {
+                int pos = random.nextInt(Math.min(sofaClientes.getChildren().size() + 1, 4)); // 0 a 4
+                clientes.add(pos, clientePrioridad);
+            }
             actualizarSofaYEspera.run();
         });
 
@@ -349,6 +431,8 @@ barberosInfo.setAlignment(Pos.CENTER);
                 // Mostrar "pagando.png"
                 Image pagandoImg = new Image(getClass().getResourceAsStream("/img/pagando.png"));
                 clientesEnSilla.get(idx).setImage(pagandoImg);
+                clientesEnSilla.get(idx).setFitWidth(140);   // Aumenta el ancho
+clientesEnSilla.get(idx).setFitHeight(140); // Aumenta el alto
                 clientesEnSilla.get(idx).setVisible(true);
                 barrasProgreso.get(idx).setProgress(0);
 
@@ -402,9 +486,13 @@ barberosInfo.setAlignment(Pos.CENTER);
             });
             pagoTimeline.setCycleCount(1);
 
+            int numeroCliente = clienteNumeros.getOrDefault(clienteQueSale, 0);
+            labelCobrandoCliente.setText("Cobrando a Cliente: " + numeroCliente);
+            labelElBarbero.setText("El Barbero: " + (idxSilla + 1));
+
             pagoTimeline.setOnFinished(e -> {
                 clientesEnCaja.setVisible(false);
-                barraCaja.setProgress(0); // <-- REINICIA LA BARRA DE LA CAJA
+                barraCaja.setProgress(0);
 
                 // Elimina al cliente de la lista para que no vuelva al sofá
                 clientes.remove(clienteQueSale);
@@ -417,6 +505,14 @@ barberosInfo.setAlignment(Pos.CENTER);
                     clientesEnSilla.get(idxSilla).setImage(null);
                     clientesEnSilla.get(idxSilla).setVisible(false);
                 }
+
+                // Sumar al total acumulado y actualizar el label
+                Random random = new Random();
+                int monto = 30 + random.nextInt(51); // Entre 30 y 80 dólares
+dineroBarberos[idxSilla] += monto;
+totalAcumulado += monto;
+labelTotalAcumulado.setText("Total Acumulado: $" + totalAcumulado);
+actualizarBarberosInfo();
 
                 // Intenta llenar todas las sillas libres con clientes esperando
                 for (int i = 0; i < sillasOcupadas.size(); i++) {
@@ -432,6 +528,8 @@ barberosInfo.setAlignment(Pos.CENTER);
                         if (siguiente != null) {
                             sillasOcupadas.set(i, siguiente);
                             clientesEnSilla.get(i).setImage(siguiente.getImage());
+                            clientesEnSilla.get(i).setFitWidth(60);   // <-- Restaura tamaño normal
+clientesEnSilla.get(i).setFitHeight(90);  // <-- Restaura tamaño normal
                             clientesEnSilla.get(i).setVisible(true);
                             barrasProgreso.get(i).setProgress(0);
                             timelines.get(i).playFromStart();
@@ -440,29 +538,27 @@ barberosInfo.setAlignment(Pos.CENTER);
                             // No hay clientes esperando, muestra "durmiendo.png"
                             Image durmiendoImg = new Image(getClass().getResourceAsStream("/img/durmiendo.png"));
                             clientesEnSilla.get(i).setImage(durmiendoImg);
+                            clientesEnSilla.get(i).setFitWidth(140);   // Aumenta el ancho
+clientesEnSilla.get(i).setFitHeight(140); // Aumenta el alto
                             clientesEnSilla.get(i).setVisible(true);
                         }
                     }
                 }
                 cajaOcupada = false;
-
-                actualizarSofaYEspera.run();
-                iniciarPagoEnCaja();
-            });
+actualizarSofaYEspera.run();
+iniciarPagoEnCaja();
+            }); 
             pagoTimeline.playFromStart();
         }
+        actualizarSofaYEspera.run();
     }
-    Label barbero1 = new Label("Barbero 1: $0");
-Label barbero2 = new Label("Barbero 2: $0");
-Label barbero3 = new Label("Barbero 3: $0");
-
-
     // Método para actualizar la información de los barberos (dinero ganado)
 private void actualizarBarberosInfo() {
-    // Actualizamos el texto con el dinero ganado por cada barbero
     barbero1.setText("Barbero 1: $" + dineroBarberos[0]);
     barbero2.setText("Barbero 2: $" + dineroBarberos[1]);
     barbero3.setText("Barbero 3: $" + dineroBarberos[2]);
 }
+
+
 
 }
