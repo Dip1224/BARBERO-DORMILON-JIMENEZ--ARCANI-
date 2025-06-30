@@ -39,13 +39,8 @@
 - **Programación orientada a objetos**
 - **Animaciones** y **notificaciones personalizadas**
 
-## **Capturas de pantalla**
 
-*(Aquí puedes agregar algunas capturas de pantalla de la interfaz en funcionamiento para mostrar la apariencia de la aplicación)*
 
----
-
-### **Cómo empezar**
 
 1. **Clonar el repositorio**:
 
@@ -55,5 +50,6 @@
    git clone https://github.com/Dip1224/BARBERO-DORMILON-JIMENEZ--ARCANI-.git
 
    
+## **Capturas de pantalla**
 
 ![image](https://github.com/user-attachments/assets/cc9fd5d4-c41f-492b-9af5-bba2c3df1407)
