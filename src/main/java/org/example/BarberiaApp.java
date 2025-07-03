@@ -1,8 +1,15 @@
 package org.example;
 
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
+
+import org.example.model.BarberoInfo;
 
 import javafx.animation.Interpolator;
 import javafx.animation.KeyFrame;
@@ -24,6 +31,8 @@ import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableRow;
 import javafx.scene.control.TableView;
 import javafx.scene.control.Tooltip;
+import javafx.scene.control.cell.PropertyValueFactory;
+import javafx.scene.control.cell.TextFieldTableCell;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.HBox;
@@ -36,49 +45,245 @@ import javafx.util.Duration;
 
 public class BarberiaApp extends Application {
 
-    // Variables de instancia para acceso entre métodos
+    // --- Constantes ---
+    private static final double OBJETIVO_GANANCIA = 500;
+
+    // --- Variables de instancia ---
     private boolean cajaOcupada = false;
     private ImageView clientesEnCaja;
-
     private double totalAcumulado = 0;
- // Variables para el contador de clientes, dinero acumulado y dinero de los barberos
     private int clienteContador = 1;
-    private final java.util.Map<ImageView, Integer> clienteNumeros = new java.util.HashMap<>();
+    private final Map<ImageView, Integer> clienteNumeros = new HashMap<>();
     private final double[] dineroBarberos = {0, 0, 0};
     private Label labelCobrandoCliente;
     private Label labelElBarbero;
     private Label labelTotalAcumulado;
-
     private final List<ProgressBar> barrasProgreso = new ArrayList<>();
     private final List<Timeline> timelines = new ArrayList<>();
-    // private final List<StackPane> sillasGraficas = new ArrayList<>();
     private final List<ImageView> clientesEnSilla = new ArrayList<>();
     private final List<ImageView> clientes = new ArrayList<>();
     private final List<ImageView> sillasOcupadas = new ArrayList<>();
     private final List<ImageView> colaPago = new ArrayList<>();
     private ProgressBar barraCaja;
     private Runnable actualizarSofaYEspera;
-// Para evitar mostrar varias veces el logro
-    private final boolean[] logroMostrado = {false, false, false}; 
-    private final double OBJETIVO_GANANCIA = 500;
-
-    // HBox para clientes sentados en el sofá
+    private final boolean[] logroMostrado = {false, false, false};
     private HBox sofaClientes;
-    // VBox para la sala de espera (de pie, a la izquierda)
     private VBox salaEspera;
-
     private final ObservableList<BarberoInfo> barberosData = FXCollections.observableArrayList(
         new BarberoInfo("Barbero 1", 0),
         new BarberoInfo("Barbero 2", 0),
         new BarberoInfo("Barbero 3", 0)
     );
-    private TableView<BarberoInfo> tablaBarberos; // Declarar como variable de instancia
+    private TableView<BarberoInfo> tablaBarberos;
+    private StackPane rootPane;
+    private int idDiaActual;
+    private int numeroDiaActual;
+    private Label labelDiaActual;
 
+    // --- Enums y mapas auxiliares ---
+    private enum EventoCliente { NINGUNO, VIP, PROBLEMATICO }
+    private final Map<ImageView, EventoCliente> eventosCliente = new HashMap<>();
+
+    // --- Métodos de utilidad ---
+    private void mostrarNotificacion(String mensaje, String color) {
+        Label notificacion = new Label(mensaje);
+        notificacion.setStyle(
+            "-fx-background-color: " + color + ";"
+            + "-fx-text-fill: white;"
+            + "-fx-padding: 16px 32px;"
+            + "-fx-background-radius: 20px;"
+            + "-fx-font-size: 18px;"
+            + "-fx-font-weight: bold;"
+            + "-fx-effect: dropshadow(gaussian, #333, 8, 0.3, 0, 2);"
+        );
+        StackPane.setAlignment(notificacion, Pos.TOP_RIGHT);
+        StackPane.setMargin(notificacion, new Insets(40, 40, 0, 0));
+        rootPane.getChildren().add(notificacion);
+
+        notificacion.setOpacity(0);
+        Timeline fadeIn = new Timeline(
+            new KeyFrame(Duration.seconds(0), new KeyValue(notificacion.opacityProperty(), 0)),
+            new KeyFrame(Duration.seconds(0.3), new KeyValue(notificacion.opacityProperty(), 1))
+        );
+        Timeline fadeOut = new Timeline(
+            new KeyFrame(Duration.seconds(0), new KeyValue(notificacion.opacityProperty(), 1)),
+            new KeyFrame(Duration.seconds(0.3), new KeyValue(notificacion.opacityProperty(), 0))
+        );
+        fadeIn.setOnFinished(_ -> {
+            new Timeline(new KeyFrame(Duration.seconds(2), _ -> fadeOut.play())).play();
+        });
+        fadeOut.setOnFinished(_ -> rootPane.getChildren().remove(notificacion));
+        fadeIn.play();
+    }
+
+    // --- Métodos de lógica ---
+    private void actualizarBarberosInfo() {
+        double max = Math.max(dineroBarberos[0], Math.max(dineroBarberos[1], dineroBarberos[2]));
+        for (int i = 0; i < 3; i++) {
+            barberosData.get(i).setDinero(dineroBarberos[i]);
+            if (!logroMostrado[i] && dineroBarberos[i] >= OBJETIVO_GANANCIA) {
+                logroMostrado[i] = true;
+                mostrarNotificacion(barberosData.get(i).getNombre() + " ha superado el objetivo de $" + (int)OBJETIVO_GANANCIA + "!", "#2980b9");
+            }
+        }
+        tablaBarberos.setRowFactory(_ -> new TableRow<BarberoInfo>() {
+            @Override
+            protected void updateItem(BarberoInfo item, boolean empty) {
+                super.updateItem(item, empty);
+                if (item == null || empty) {
+                    this.setStyle("");
+                } else if (item.getDinero() == max && max > 0) {
+                    this.setStyle("-fx-background-color: gold; -fx-font-weight: bold;");
+                } else {
+                    this.setStyle("");
+                }
+            }
+        });
+        tablaBarberos.refresh();
+    }
+
+    void iniciarPagoEnCaja() {
+        if (!colaPago.isEmpty() && !cajaOcupada) {
+            cajaOcupada = true;
+            ImageView clienteQueSale = colaPago.remove(0);
+
+            int idxSillaTmp = -1;
+            for (int i = 0; i < sillasOcupadas.size(); i++) {
+                if (sillasOcupadas.get(i) == clienteQueSale) {
+                    idxSillaTmp = i;
+                    break;
+                }
+            }
+            final int idxSilla = idxSillaTmp;
+
+            clientesEnCaja.setImage(clienteQueSale.getImage());
+            clientesEnCaja.setVisible(true);
+            clientesEnCaja.setTranslateX(-100);
+            TranslateTransition animCaja = new TranslateTransition(Duration.seconds(0.5), clientesEnCaja);
+            animCaja.setToX(0);
+            animCaja.play();
+
+            barraCaja.setProgress(0);
+            Timeline pagoTimeline = new Timeline(
+                new KeyFrame(Duration.ZERO, _ -> barraCaja.setProgress(0)),
+                new KeyFrame(Duration.seconds(3), _ -> barraCaja.setProgress(1))
+            );
+            pagoTimeline.currentTimeProperty().addListener((_, _, newTime) -> {
+                double progress = newTime.toSeconds() / 3.0;
+                barraCaja.setProgress(progress);
+            });
+            pagoTimeline.setCycleCount(1);
+
+            int numeroCliente = clienteNumeros.getOrDefault(clienteQueSale, 0);
+            labelCobrandoCliente.setText("Cobrando a Cliente: " + numeroCliente);
+            labelElBarbero.setText("El Barbero: " + (idxSilla + 1));
+
+            pagoTimeline.setOnFinished(_ -> {
+                TranslateTransition salida = new TranslateTransition(Duration.seconds(0.5), clientesEnCaja);
+                salida.setToX(150);
+                salida.setOnFinished(_ -> {
+                    clientesEnCaja.setVisible(false);
+                    clientesEnCaja.setTranslateX(0);
+                    barraCaja.setProgress(0);
+
+                    clientes.remove(clienteQueSale);
+                    sofaClientes.getChildren().remove(clienteQueSale);
+                    salaEspera.getChildren().remove(clienteQueSale);
+
+                    if (idxSilla != -1) {
+                        sillasOcupadas.set(idxSilla, null);
+                        clientesEnSilla.get(idxSilla).setImage(null);
+                        clientesEnSilla.get(idxSilla).setVisible(false);
+                    }
+
+                    Random random = new Random();
+                    EventoCliente evento = eventosCliente.getOrDefault(clienteQueSale, EventoCliente.NINGUNO);
+                    int monto = 30 + random.nextInt(51);
+
+                    switch (evento) {
+                        case VIP -> {
+                            monto *= 2;
+                            mostrarNotificacion("¡Cliente VIP! El barbero recibe el doble: $" + monto, "#e67e22");
+                        }
+                        case PROBLEMATICO -> {
+                            try { Thread.sleep(2000); } catch (InterruptedException ex) {}
+                            mostrarNotificacion("¡Cliente problemático! El pago se retrasó. Monto: $" + monto, "#c0392b");
+                        }
+                        default -> {
+                            mostrarNotificacion("Pago exitoso. Monto: $" + monto, "#27ae60");
+                        }
+                    }
+
+                    // Después de calcular el monto y actualizar el dinero del barbero:
+                    dineroBarberos[idxSilla] += monto;
+                    totalAcumulado += monto;
+                    labelTotalAcumulado.setText("Total Acumulado: $" + totalAcumulado);
+                    actualizarBarberosInfo();
+
+                    // GUARDAR EN BASE DE DATOS:
+                    // Guarda el barbero (nombre y dinero ganado)
+                    DBService.guardarBarbero(barberosData.get(idxSilla).getNombre(), dineroBarberos[idxSilla]);
+                    // Guarda la transacción (nombre del cliente, id del barbero, monto)
+                    // Si no tienes el id del barbero, puedes usar (idxSilla+1) si los ids son 1,2,3
+                    DBService.guardarTransaccion(
+                        // nombre del cliente
+                        clienteQueSale.getProperties().getOrDefault("nombre", "Cliente").toString(),
+                        idxSilla + 1,
+                        monto,
+                        idDiaActual // <-- Este debe ser el id del día actual, NO -1
+                    );
+
+                    for (int i = 0; i < sillasOcupadas.size(); i++) {
+                        if (sillasOcupadas.get(i) == null) {
+                            ImageView siguiente = null;
+                            for (ImageView cliente : clientes) {
+                                if (!sillasOcupadas.contains(cliente) &&
+                                    !(clientesEnCaja.isVisible() && cliente.getImage() == clientesEnCaja.getImage())) {
+                                    siguiente = cliente;
+                                    break;
+                                }
+                            }
+                            if (siguiente != null) {
+                                sillasOcupadas.set(i, siguiente);
+                                clientesEnSilla.get(i).setImage(siguiente.getImage());
+                                clientesEnSilla.get(i).setFitWidth(60);
+                                clientesEnSilla.get(i).setFitHeight(90);
+                                clientesEnSilla.get(i).setVisible(true);
+                                barrasProgreso.get(i).setProgress(0);
+                                timelines.get(i).playFromStart();
+
+                                clientesEnSilla.get(i).setTranslateY(-50);
+                                TranslateTransition transition = new TranslateTransition(Duration.seconds(0.5), clientesEnSilla.get(i));
+                                transition.setToY(0);
+                                transition.play();
+
+                                actualizarSofaYEspera.run();
+                            } else {
+                                Image durmiendoImg = new Image(getClass().getResourceAsStream("/img/durmiendo.png"));
+                                clientesEnSilla.get(i).setImage(durmiendoImg);
+                                clientesEnSilla.get(i).setFitWidth(140);
+                                clientesEnSilla.get(i).setFitHeight(140);
+                                clientesEnSilla.get(i).setVisible(true);
+                            }
+                        }
+                    }
+                    cajaOcupada = false;
+                    iniciarPagoEnCaja();
+                });
+                salida.play();
+            });
+            pagoTimeline.playFromStart();
+        }
+        actualizarSofaYEspera.run();
+    }
+
+    // --- Método principal de la interfaz ---
     @Override
     public void start(Stage primaryStage) {
-
+        rootPane = new StackPane();
         VBox root = new VBox(20);
-        root.setStyle("-fx-background-color: #b0b0b0;"); // Fondo plomo
+        root.setStyle("-fx-background-color: #b0b0b0;");
+        rootPane.getChildren().add(root);
 
         // Imagen de barbero grande
         Image barberoImg = new Image(getClass().getResourceAsStream("/img/barbero.png"));
@@ -94,70 +299,68 @@ public class BarberiaApp extends Application {
         HBox barraImagen = new HBox(barberoView);
         barraImagen.setAlignment(Pos.TOP_LEFT);
 
-        // HBox para las sillas (centradas arriba)
-        // Listas para las barras, timelines y clientes en silla
-        // (Ya declaradas como variables de instancia)
 
         HBox sillonesBarbero = new HBox(60);
         sillonesBarbero.setAlignment(Pos.CENTER);
         for (int i = 0; i < 3; i++) {
-    // Crear la imagen de la silla
-    Image sillaImg = new Image(getClass().getResourceAsStream("/img/sillon.png"));
-    ImageView sillaView = new ImageView(sillaImg);
-    sillaView.setFitWidth(140);
-    sillaView.setFitHeight(140);
+            // Crear la imagen de la silla
+            Image sillaImg = new Image(getClass().getResourceAsStream("/img/sillon.png"));
+            ImageView sillaView = new ImageView(sillaImg);
+            sillaView.setFitWidth(140);
+            sillaView.setFitHeight(140);
 
-    // Crear la imagen del cliente (inicialmente invisible)
-    ImageView clienteEnSilla = new ImageView();
-    clienteEnSilla.setFitWidth(60);
-    clienteEnSilla.setFitHeight(90);
-    clienteEnSilla.setVisible(false);  // Esto controla si el cliente está en la silla
-    clientesEnSilla.add(clienteEnSilla);
+            // Crear la imagen del cliente (inicialmente invisible)
+            ImageView clienteEnSilla = new ImageView();
+            clienteEnSilla.setFitWidth(60);
+            clienteEnSilla.setFitHeight(90);
+            clienteEnSilla.setVisible(false);  // Esto controla si el cliente está en la silla
+            clientesEnSilla.add(clienteEnSilla);
 
-    // Crear el StackPane que contendrá la silla y el cliente
-    StackPane stackSilla = new StackPane();
-    stackSilla.getChildren().addAll(sillaView, clienteEnSilla);
-    StackPane.setAlignment(clienteEnSilla, Pos.CENTER);  // Alinea el cliente en el centro de la silla
+            // Crear el StackPane que contendrá la silla y el cliente
+            StackPane stackSilla = new StackPane();
+            stackSilla.getChildren().addAll(sillaView, clienteEnSilla);
+            StackPane.setAlignment(clienteEnSilla, Pos.CENTER);  // Alinea el cliente en el centro de la silla
 
-    // Crear la barra de progreso
-    ProgressBar barra = new ProgressBar(0);
-    barra.setPrefWidth(120);
-    barra.setPrefHeight(15);
-    barra.setStyle("-fx-accent: #2e8b57; -fx-control-inner-background: #cccccc;");
-    barrasProgreso.add(barra);
+            // Crear la barra de progreso
+            ProgressBar barra = new ProgressBar(0);
+            barra.setPrefWidth(120);
+            barra.setPrefHeight(15);
+            barra.setStyle("-fx-accent: #2e8b57; -fx-control-inner-background: #cccccc;");
+            barrasProgreso.add(barra);
 
-    // Crear el texto (Label) debajo de cada barra
-    Label labelBarbero = new Label("Barbero " + (i + 1)); // Este texto estará debajo de la barra
-    labelBarbero.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #333;");
+            // Crear el texto (Label) debajo de cada barra
+            Label labelBarbero = new Label();
+            labelBarbero.textProperty().bind(barberosData.get(i).nombreProperty());
+            labelBarbero.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #333;");
 
-    // Crear un VBox para la barra y el texto debajo
-    VBox barraYTexto = new VBox(5, barra, labelBarbero);
-    barraYTexto.setAlignment(Pos.CENTER);  // Centra los elementos dentro del VBox
+            // Crear un VBox para la barra y el texto debajo
+            VBox barraYTexto = new VBox(5, barra, labelBarbero);
+            barraYTexto.setAlignment(Pos.CENTER);  // Centra los elementos dentro del VBox
 
-    // Crear un contenedor (VBox) que agrupe la silla y la barra + texto
-    VBox sillaConBarra = new VBox(5, stackSilla, barraYTexto);
-    sillaConBarra.setAlignment(Pos.CENTER);  // Centra todos los elementos (silla, barra, texto)
+            // Crear un contenedor (VBox) que agrupe la silla y la barra + texto
+            VBox sillaConBarra = new VBox(5, stackSilla, barraYTexto);
+            sillaConBarra.setAlignment(Pos.CENTER);  // Centra todos los elementos (silla, barra, texto)
 
-    // Agregar al contenedor principal
-    sillonesBarbero.getChildren().add(sillaConBarra);
+            // Agregar al contenedor principal
+            sillonesBarbero.getChildren().add(sillaConBarra);
 
-    // Timeline para la barra de progreso de cada silla
-    ProgressBar barraTimeline = barrasProgreso.get(i);
-    Timeline timeline = new Timeline(
-        new KeyFrame(Duration.ZERO, _ -> barraTimeline.setProgress(0)),
-        new KeyFrame(Duration.seconds(5), _ -> barraTimeline.setProgress(1))
-    );
-    timeline.getKeyFrames().setAll(
-        new KeyFrame(Duration.ZERO, new KeyValue(barraTimeline.progressProperty(), 0)),
-        new KeyFrame(Duration.seconds(5), new KeyValue(barraTimeline.progressProperty(), 1, Interpolator.EASE_BOTH))
-    );
-    timeline.currentTimeProperty().addListener((_, _, newTime) -> {
-        double progress = newTime.toSeconds() / 5.0;
-        barraTimeline.setProgress(progress);
-    });
-    timeline.setCycleCount(1);
-    timelines.add(timeline);
-}
+            // Timeline para la barra de progreso de cada silla
+            ProgressBar barraTimeline = barrasProgreso.get(i);
+            Timeline timeline = new Timeline(
+                new KeyFrame(Duration.ZERO, _ -> barraTimeline.setProgress(0)),
+                new KeyFrame(Duration.seconds(5), _ -> barraTimeline.setProgress(1))
+            );
+            timeline.getKeyFrames().setAll(
+                new KeyFrame(Duration.ZERO, new KeyValue(barraTimeline.progressProperty(), 0)),
+                new KeyFrame(Duration.seconds(5), new KeyValue(barraTimeline.progressProperty(), 1, Interpolator.EASE_BOTH))
+            );
+            timeline.currentTimeProperty().addListener((_, _, newTime) -> {
+                double progress = newTime.toSeconds() / 5.0;
+                barraTimeline.setProgress(progress);
+            });
+            timeline.setCycleCount(1);
+            timelines.add(timeline);
+        }
 
 
         // Imagen del sofá (siempre visible)
@@ -178,30 +381,30 @@ public class BarberiaApp extends Application {
         // Botón para crear cliente
         Button btnCrearCliente = new Button("Crear Cliente");
         Button btnCrearClientePrioridad = new Button("Crear Cliente Prioridad");
-Button btnFinDia = new Button("Fin del Día");
-btnCrearCliente.setStyle("-fx-font-size: 16px; -fx-background-color: #e67e22; -fx-text-fill: white; -fx-pref-width: 180px; -fx-pref-height: 40px;");
-btnCrearClientePrioridad.setStyle("-fx-font-size: 16px; -fx-background-color: #e67e22; -fx-text-fill: white; -fx-pref-width: 180px; -fx-pref-height: 40px;");
-btnFinDia.setStyle("-fx-font-size: 16px; -fx-background-color: #27ae60; -fx-text-fill: white; -fx-pref-width: 180px; -fx-pref-height: 40px;");
+        Button btnFinDia = new Button("Fin del Día");
+        btnCrearCliente.setStyle("-fx-font-size: 16px; -fx-background-color: #e67e22; -fx-text-fill: white; -fx-pref-width: 180px; -fx-pref-height: 40px;");
+        btnCrearClientePrioridad.setStyle("-fx-font-size: 16px; -fx-background-color: #e67e22; -fx-text-fill: white; -fx-pref-width: 180px; -fx-pref-height: 40px;");
+        btnFinDia.setStyle("-fx-font-size: 16px; -fx-background-color: #27ae60; -fx-text-fill: white; -fx-pref-width: 180px; -fx-pref-height: 40px;");
 
-// Acción del botón "Fin del Día"
-btnFinDia.setOnAction(_ -> {
-    StringBuilder resumen = new StringBuilder("Resumen del día:\n\n");
-    for (int i = 0; i < 3; i++) {
-        resumen.append(barberosData.get(i).getNombre())
-            .append(": $").append((int)dineroBarberos[i]).append("\n");
-    }
-    double max = Math.max(dineroBarberos[0], Math.max(dineroBarberos[1], dineroBarberos[2]));
-    for (int i = 0; i < 3; i++) {
-        if (dineroBarberos[i] == max && max > 0) {
-            resumen.append("\n¡Ganador del día: ").append(barberosData.get(i).getNombre()).append("!\n");
-        }
-    }
-    Alert alert = new Alert(Alert.AlertType.INFORMATION);
-    alert.setTitle("Fin del Día");
-    alert.setHeaderText(null);
-    alert.setContentText(resumen.toString());
-    alert.show();
-});
+        // Acción del botón "Fin del Día"
+        btnFinDia.setOnAction(_ -> {
+            StringBuilder resumen = new StringBuilder("Resumen del día:\n\n");
+            for (int i = 0; i < 3; i++) {
+                resumen.append(barberosData.get(i).getNombre())
+                    .append(": $").append((int)dineroBarberos[i]).append("\n");
+            }
+            double max = Math.max(dineroBarberos[0], Math.max(dineroBarberos[1], dineroBarberos[2]));
+            for (int i = 0; i < 3; i++) {
+                if (dineroBarberos[i] == max && max > 0) {
+                    resumen.append("\n¡Ganador del día: ").append(barberosData.get(i).getNombre()).append("!\n");
+                }
+            }
+            Alert alert = new Alert(Alert.AlertType.INFORMATION);
+            alert.setTitle("Fin del Día");
+            alert.setHeaderText(null);
+            alert.setContentText(resumen.toString());
+            alert.show();
+        });
 
         // HBox para los botones de crear cliente
         HBox botonesClientes = new HBox(10, btnCrearCliente, btnCrearClientePrioridad, btnFinDia);
@@ -215,6 +418,12 @@ btnFinDia.setOnAction(_ -> {
 
         TableColumn<BarberoInfo, String> colNombre = new TableColumn<>("Barbero");
         colNombre.setCellValueFactory(cellData -> cellData.getValue().nombreProperty());
+        // Hacer la columna editable
+        colNombre.setCellFactory(TextFieldTableCell.forTableColumn());
+        tablaBarberos.setEditable(true);
+        colNombre.setOnEditCommit(event -> {
+            event.getRowValue().setNombre(event.getNewValue());
+        });
 
         TableColumn<BarberoInfo, Number> colDinero = new TableColumn<>("Dinero Ganado");
         colDinero.setCellValueFactory(cellData -> cellData.getValue().dineroProperty());
@@ -261,10 +470,10 @@ btnFinDia.setOnAction(_ -> {
         barraCaja.setVisible(true);
 
         // Crear un Label para el texto "CAJA REGISTRADORA"
-Label labelCaja = new Label("CAJA REGISTRADORA");
-labelCaja.setStyle("-fx-font-size: 18px; -fx-font-weight: bold; -fx-text-fill: #333;");
+        Label labelCaja = new Label("CAJA REGISTRADORA");
+        labelCaja.setStyle("-fx-font-size: 18px; -fx-font-weight: bold; -fx-text-fill: #333;");
 
- // Crear un Label para "Cobrando a Cliente"
+        // Crear un Label para "Cobrando a Cliente"
         labelCobrandoCliente = new Label("Cobrando a Cliente: ");
         labelCobrandoCliente.setStyle("-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #333;");
 
@@ -279,9 +488,8 @@ labelCaja.setStyle("-fx-font-size: 18px; -fx-font-weight: bold; -fx-text-fill: #
 
 
         // Cuando el cliente paga
-labelCobrandoCliente.setText("Cobrando a Cliente: " + clienteContador);
-labelElBarbero.setText("El Barbero: " + (1));  // Aquí puedes asociar el número del barbero o la silla
-    
+        labelCobrandoCliente.setText("Cobrando a Cliente: " + clienteContador);
+        labelElBarbero.setText("El Barbero: " + (1));  // Aquí puedes asociar el número del barbero o la silla
 
 
 
@@ -305,8 +513,8 @@ labelElBarbero.setText("El Barbero: " + (1));  // Aquí puedes asociar el númer
         HBox.setHgrow(espaciadorHorizontal, Priority.ALWAYS);
 
         filaInferior.getChildren().addAll(
-            salaEspera, 
-            sofaYBoton, 
+            salaEspera,
+            sofaYBoton,
             espaciadorHorizontal, // <-- agrega el espaciador aquí
             cajaVBox
         );
@@ -324,31 +532,31 @@ labelElBarbero.setText("El Barbero: " + (1));  // Aquí puedes asociar el númer
         // Agregar barraImagen y título en una HBox para la barra superior
         HBox barraSuperior = new HBox(20, barraImagen, titulo);
         barraSuperior.setAlignment(Pos.CENTER); // <-- Centrado
-barraSuperior.setPadding(new Insets(0, 0, 0, 0)); // Sin margen izquierdo extra
+        barraSuperior.setPadding(new Insets(0, 0, 0, 0)); // Sin margen izquierdo extra
 
         // Título para la tabla VIP
         Label tituloVIP = new Label("Clientes VIP");
         tituloVIP.setStyle("-fx-font-size: 18px; -fx-font-weight: bold; -fx-text-fill: #333;");
 
         ObservableList<String> listaVIP = FXCollections.observableArrayList(
-    "Rivera", "Peluchín", "Darwin Menacho"
-);
-ListView<String> tablaVIP = new ListView<>(listaVIP);
-tablaVIP.setPrefSize(150, 90);
-tablaVIP.setStyle("-fx-background-color: rgba(255,255,255,0.7); -fx-border-color: #e67e22;");
+            "Rivera", "Peluchín", "Darwin Menacho"
+        );
+        ListView<String> tablaVIP = new ListView<>(listaVIP);
+        tablaVIP.setPrefSize(150, 90);
+        tablaVIP.setStyle("-fx-background-color: rgba(255,255,255,0.7); -fx-border-color: #e67e22;");
 
-VBox vboxVIP = new VBox(5, tituloVIP, tablaVIP);
-vboxVIP.setAlignment(Pos.TOP_CENTER);
-vboxVIP.setPadding(new Insets(10));
-vboxVIP.setStyle("-fx-background-color: transparent;");
+        VBox vboxVIP = new VBox(5, tituloVIP, tablaVIP);
+        vboxVIP.setAlignment(Pos.TOP_CENTER);
+        vboxVIP.setPadding(new Insets(10));
+        vboxVIP.setStyle("-fx-background-color: transparent;");
 
-// Agrega vboxVIP a la barra superior
-Region espaciadorVIP = new Region();
-HBox.setHgrow(espaciadorVIP, Priority.ALWAYS);
+        // Agrega vboxVIP a la barra superior
+        Region espaciadorVIP = new Region();
+        HBox.setHgrow(espaciadorVIP, Priority.ALWAYS);
 
-HBox filaSuperior = new HBox(20, barraSuperior, espaciadorVIP, vboxVIP);
-filaSuperior.setAlignment(Pos.TOP_LEFT);
-filaSuperior.setPadding(new Insets(0, 40, 0, 40));
+        HBox filaSuperior = new HBox(20, barraSuperior, espaciadorVIP, vboxVIP);
+        filaSuperior.setAlignment(Pos.TOP_LEFT);
+        filaSuperior.setPadding(new Insets(0, 40, 0, 40));
 
         // AGREGA LOS COMPONENTES AL ROOT
         root.getChildren().addAll(
@@ -397,37 +605,26 @@ filaSuperior.setPadding(new Insets(0, 40, 0, 40));
             nuevoCliente.setFitHeight(90);
 
 
-EventoCliente evento = EventoCliente.NINGUNO;
-int aleatorio = new Random().nextInt(10); // 10% problemático, 90% ninguno
-if (aleatorio == 0) evento = EventoCliente.PROBLEMATICO;
-eventosCliente.put(nuevoCliente, evento);
+            EventoCliente evento = EventoCliente.NINGUNO;
+            int aleatorio = new Random().nextInt(10); // 10% problemático, 90% ninguno
+            if (aleatorio == 0) evento = EventoCliente.PROBLEMATICO;
+            eventosCliente.put(nuevoCliente, evento);
 
-String eventoTexto = "";
-if (evento == EventoCliente.VIP) eventoTexto = " [VIP]";
-else if (evento == EventoCliente.PROBLEMATICO) eventoTexto = " [Problemático]";
+            // Tooltip con el nombre del cliente
+            // Marca visual si es problemático
+            if (evento == EventoCliente.PROBLEMATICO) {
+                nuevoCliente.setStyle("-fx-effect: dropshadow(gaussian, red, 15, 0.5, 0, 0);");
+            } else {
+                nuevoCliente.setStyle("");
+            }
 
-// Asignar nombre y personalidad por defecto
-String nombre = "Cliente " + clienteContador;
-String personalidad = "Normal";
-String desc = nombre + " (" + personalidad + ")" + eventoTexto;
-descripcionCliente.put(nuevoCliente, desc);
-Tooltip.install(nuevoCliente, new Tooltip(desc));
-
-
- // Marca visual si es problemático
-    if (evento == EventoCliente.PROBLEMATICO) {
-        nuevoCliente.setStyle("-fx-effect: dropshadow(gaussian, red, 15, 0.5, 0, 0);");
-    } else {
-        nuevoCliente.setStyle("");
-    }
-
-
-
-
-
-
-
-
+            // Generar nombre aleatorio
+            String nombre = nombresClientes[new Random().nextInt(nombresClientes.length)] + " #" + clienteContador;
+            nuevoCliente.setPickOnBounds(true);
+            Tooltip tooltip = new Tooltip(nombre);
+            Tooltip.install(nuevoCliente, tooltip);
+            // Mostrar notificación con el nombre del cliente creado
+            mostrarNotificacion("Nuevo cliente: " + nombre, "#34495e");
 
 
             // Verifica si hay espacio total (sillas + sofá + de pie)
@@ -483,25 +680,34 @@ Tooltip.install(nuevoCliente, new Tooltip(desc));
                 "/img/darwin Menacho.png"
             };
             Random random = new Random();
-            String imgPath = opciones[random.nextInt(opciones.length)];
+            int idx = random.nextInt(opciones.length);
+            String imgPath = opciones[idx];
             ImageView clientePrioridad = new ImageView(new Image(getClass().getResourceAsStream(imgPath)));
             clientePrioridad.setFitWidth(60);
             clientePrioridad.setFitHeight(90);
             clienteNumeros.put(clientePrioridad, clienteContador);
             clienteContador++;
 
-// Siempre VIP
-    EventoCliente evento = EventoCliente.VIP;
-    eventosCliente.put(clientePrioridad, evento);
+            String nombre;
+            if (imgPath.contains("rivera.png")) {
+                nombre = "Rivera";
+            } else if (imgPath.contains("peluchin.png")) {
+                nombre = "Peluchín";
+            } else if (imgPath.contains("darwin Menacho.png")) {
+                nombre = "Darwin Menacho";
+            } else {
+                nombre = nombresClientes[new Random().nextInt(nombresClientes.length)] + " VIP #" + clienteContador;
+            }
 
-    String desc = "VIP (Prioridad)";
-    descripcionCliente.put(clientePrioridad, desc);
-    Tooltip.install(clientePrioridad, new Tooltip(desc));
-    clientePrioridad.setStyle("-fx-effect: dropshadow(gaussian, gold, 15, 0.5, 0, 0);");
+            EventoCliente evento = EventoCliente.VIP;
+            eventosCliente.put(clientePrioridad, evento);
 
-
-
-
+            clientePrioridad.setPickOnBounds(true);
+            Tooltip tooltip = new Tooltip(nombre);
+            Tooltip.install(clientePrioridad, tooltip);
+            clientePrioridad.setStyle("-fx-effect: dropshadow(gaussian, gold, 15, 0.5, 0, 0);");
+            // Mostrar notificación con el nombre del cliente VIP creado
+            mostrarNotificacion("Nuevo cliente VIP: " + nombre, "#e67e22");
 
 
             // Busca la primera silla libre y lo sienta de inmediato
@@ -546,7 +752,7 @@ Tooltip.install(nuevoCliente, new Tooltip(desc));
                 Image pagandoImg = new Image(getClass().getResourceAsStream("/img/pagando.png"));
                 clientesEnSilla.get(idx).setImage(pagandoImg);
                 clientesEnSilla.get(idx).setFitWidth(140);   // Aumenta el ancho
-clientesEnSilla.get(idx).setFitHeight(140); // Aumenta el alto
+                clientesEnSilla.get(idx).setFitHeight(140); // Aumenta el alto
                 clientesEnSilla.get(idx).setVisible(true);
                 barrasProgreso.get(idx).setProgress(0);
 
@@ -560,195 +766,179 @@ clientesEnSilla.get(idx).setFitHeight(140); // Aumenta el alto
         // Al inicio, no inicies ninguna barra
         // timelines.get(0).playFromStart(); // ¡Elimina o comenta esta línea!
 
-        Scene scene = new Scene(root, 1250, 900); // 1100 x 850
+        Scene scene = new Scene(rootPane, 1250, 900); // 1100 x 850
         primaryStage.setScene(scene);
         primaryStage.show();
+
+        idDiaActual = DBService.crearNuevoDia();
+        numeroDiaActual = obtenerNumeroDiaActual();
+        labelDiaActual = new Label("Día: " + numeroDiaActual);
+        labelDiaActual.setStyle("-fx-font-size: 18px; -fx-font-weight: bold; -fx-text-fill: #2980b9;");
+
+        // Botón para ver historial de días
+        Button btnHistorialDias = new Button("Ver Historial de Días");
+        btnHistorialDias.setOnAction(_ -> mostrarHistorialDias());
+
+        // Agrega el label y el botón a la barra superior existente
+        barraSuperior.getChildren().addAll(labelDiaActual, btnHistorialDias);
+    }
+
+    // Método para obtener el número de día (conteo de registros en la tabla dias)
+    private int obtenerNumeroDiaActual() {
+        int count = 1;
+        try (Connection conn = DBUtil.getConnection();
+             PreparedStatement ps = conn.prepareStatement("SELECT COUNT(*) FROM dias");
+             ResultSet rs = ps.executeQuery()) {
+            if (rs.next()) {
+                count = rs.getInt(1);
+            }
+        } catch (Exception e) {
+            System.err.println("Error al obtener el número de día actual: " + e.getMessage());
+        }
+        return count;
+    }
+
+    // Método para mostrar el historial de días en una ventana nueva
+    private void mostrarHistorialDias() {
+        Stage stage = new Stage();
+        VBox root = new VBox(10);
+        root.setPadding(new Insets(15));
+
+        Label titulo = new Label("Historial de Días");
+        titulo.setStyle("-fx-font-size: 20px; -fx-font-weight: bold;");
+
+        TableView<DiaResumen> tablaDias = new TableView<>();
+        tablaDias.setPlaceholder(new Label("Tabla sin contenido"));
+
+        TableColumn<DiaResumen, Integer> colNumeroDia = new TableColumn<>("Día");
+        colNumeroDia.setCellValueFactory(new PropertyValueFactory<>("numeroDia"));
+        TableColumn<DiaResumen, String> colFecha = new TableColumn<>("Fecha");
+        colFecha.setCellValueFactory(new PropertyValueFactory<>("fecha"));
+
+        tablaDias.getColumns().clear();
+        tablaDias.getColumns().add(colNumeroDia);
+        tablaDias.getColumns().add(colFecha);
+
+        // Método para cargar los días
+        Runnable cargarDias = () -> {
+            ObservableList<DiaResumen> dias = FXCollections.observableArrayList();
+            try (Connection conn = DBUtil.getConnection();
+                 PreparedStatement ps = conn.prepareStatement("SELECT id, fecha FROM dias ORDER BY id ASC");
+                 ResultSet rs = ps.executeQuery()) {
+                int contador = 1;
+                while (rs.next()) {
+                    dias.add(new DiaResumen(contador, rs.getInt("id"), rs.getString("fecha")));
+                    contador++;
+                }
+            } catch (Exception e) {
+                System.err.println("Error al cargar los días: " + e.getMessage());
+            }
+            tablaDias.setItems(dias);
+        };
+
+        // Botón para refrescar
+        Button btnRefrescar = new Button("Refrescar");
+        btnRefrescar.setOnAction(_ -> cargarDias.run());
+
+        // Cargar los días al abrir la ventana
+        cargarDias.run();
+
+        // Después de cargarDias.run();
+        Timeline autoRefresh = new Timeline(
+            new KeyFrame(Duration.seconds(2), _ -> cargarDias.run())
+        );
+        autoRefresh.setCycleCount(Timeline.INDEFINITE);
+        autoRefresh.play();
+
+        // Cuando cierres la ventana, detén el Timeline:
+        stage.setOnCloseRequest(_ -> autoRefresh.stop());
+
+        // Al seleccionar un día, muestra las transacciones de ese día usando el id real
+        tablaDias.setOnMouseClicked(event -> {
+            if (event.getClickCount() == 2 && tablaDias.getSelectionModel().getSelectedItem() != null) {
+                DiaResumen dia = tablaDias.getSelectionModel().getSelectedItem();
+                mostrarTransaccionesDeDia(dia.getIdReal(), dia.getNumeroDia());
+            }
+        });
+
+        root.getChildren().addAll(titulo, btnRefrescar, tablaDias);
+        stage.setScene(new Scene(root, 400, 400));
+        stage.setTitle("Historial de Días");
+        stage.show();
+    }
+
+    // Clase auxiliar para mostrar días en la tabla
+    public static class DiaResumen {
+        private final int numeroDia; // número consecutivo
+        private final int idReal;    // id real de la base de datos
+        private final String fecha;
+        public DiaResumen(int numeroDia, int idReal, String fecha) {
+            this.numeroDia = numeroDia;
+            this.idReal = idReal;
+            this.fecha = fecha;
+        }
+        public int getNumeroDia() { return numeroDia; }
+        public int getIdReal() { return idReal; }
+        public String getFecha() { return fecha; }
+    }
+
+    // Método para mostrar las transacciones de un día específico
+    private void mostrarTransaccionesDeDia(int idDia, int numeroDia) {
+        Stage stage = new Stage();
+        VBox root = new VBox(10);
+        root.setPadding(new Insets(15));
+
+        Label titulo = new Label("Transacciones Día " + numeroDia);
+        titulo.setStyle("-fx-font-size: 18px; -fx-font-weight: bold;");
+
+        TableView<DBService.TransaccionResumen> tabla = new TableView<>();
+        tabla.setPlaceholder(new Label("Tabla sin contenido"));
+
+        TableColumn<DBService.TransaccionResumen, String> colCliente = new TableColumn<>("Cliente");
+        colCliente.setCellValueFactory(new PropertyValueFactory<>("nombreCliente"));
+        TableColumn<DBService.TransaccionResumen, Integer> colBarbero = new TableColumn<>("ID Barbero");
+        colBarbero.setCellValueFactory(new PropertyValueFactory<>("idBarbero"));
+        TableColumn<DBService.TransaccionResumen, Double> colMonto = new TableColumn<>("Monto");
+        colMonto.setCellValueFactory(new PropertyValueFactory<>("montoPago"));
+
+        tabla.getColumns().add(colCliente);
+        tabla.getColumns().add(colBarbero);
+        tabla.getColumns().add(colMonto);
+
+        // Método para recargar la tabla
+        Runnable cargarTransacciones = () -> {
+            tabla.setItems(
+                javafx.collections.FXCollections.observableArrayList(
+                    DBService.obtenerTransaccionesPorDia(idDia)
+                )
+            );
+        };
+
+        // Carga inicial
+        cargarTransacciones.run();
+
+        // Timeline para refrescar automáticamente cada 2 segundos
+        Timeline autoRefresh = new Timeline(
+            new KeyFrame(Duration.seconds(2), _ -> cargarTransacciones.run())
+        );
+        autoRefresh.setCycleCount(Timeline.INDEFINITE);
+        autoRefresh.play();
+
+        // Detener el refresco automático al cerrar la ventana
+        stage.setOnCloseRequest(_ -> autoRefresh.stop());
+
+        root.getChildren().addAll(titulo, tabla);
+        stage.setScene(new Scene(root, 400, 400));
+        stage.setTitle("Transacciones Día " + numeroDia);
+        stage.show();
     }
 
     public static void main(String[] args) {
         launch(args);
     }
 
-    private enum EventoCliente {
-    NINGUNO,
-    VIP,           // Paga el doble
-    PROBLEMATICO   // Retrasa la cola
-}
-private final java.util.Map<ImageView, EventoCliente> eventosCliente = new java.util.HashMap<>();
-private final java.util.Map<ImageView, String> descripcionCliente = new java.util.HashMap<>();
-
-    void iniciarPagoEnCaja() {
-        if (!colaPago.isEmpty() && !cajaOcupada) {
-            cajaOcupada = true;
-            ImageView clienteQueSale = colaPago.remove(0);
-
-            // Busca en qué silla estaba este cliente
-            int idxSillaTmp = -1;
-            for (int i = 0; i < sillasOcupadas.size(); i++) {
-                if (sillasOcupadas.get(i) == clienteQueSale) {
-                    idxSillaTmp = i;
-                    break;
-                }
-            }
-            final int idxSilla = idxSillaTmp; // <-- así es final
-
-            // Muestra el cliente en la caja
-            clientesEnCaja.setImage(clienteQueSale.getImage());
-            clientesEnCaja.setVisible(true);
-            clientesEnCaja.setTranslateX(-100); // Empieza a la izquierda de la caja
-TranslateTransition animCaja = new TranslateTransition(Duration.seconds(0.5), clientesEnCaja);
-animCaja.setToX(0);
-animCaja.play();
-
-            // Barrita de pago
-            barraCaja.setProgress(0);
-            Timeline pagoTimeline = new Timeline(
-                new KeyFrame(Duration.ZERO, _ -> barraCaja.setProgress(0)),
-                new KeyFrame(Duration.seconds(3), _ -> barraCaja.setProgress(1))
-            );
-            pagoTimeline.currentTimeProperty().addListener((_, _, newTime) -> {
-                double progress = newTime.toSeconds() / 3.0;
-                barraCaja.setProgress(progress);
-            });
-            pagoTimeline.setCycleCount(1);
-
-            int numeroCliente = clienteNumeros.getOrDefault(clienteQueSale, 0);
-            labelCobrandoCliente.setText("Cobrando a Cliente: " + numeroCliente);
-            labelElBarbero.setText("El Barbero: " + (idxSilla + 1));
-
-            pagoTimeline.setOnFinished(_ -> {
-                // Animación de salida hacia la derecha
-                TranslateTransition salida = new TranslateTransition(Duration.seconds(0.5), clientesEnCaja);
-                salida.setToX(150); // Mueve a la derecha
-                salida.setOnFinished(_ -> {
-
-
-
-                    
-                    clientesEnCaja.setVisible(false);
-                    clientesEnCaja.setTranslateX(0); // Restablece posición para el siguiente uso
-                    barraCaja.setProgress(0);
-
-                    // Elimina al cliente de la lista para que no vuelva al sofá
-                    clientes.remove(clienteQueSale);
-                    sofaClientes.getChildren().remove(clienteQueSale);
-                    salaEspera.getChildren().remove(clienteQueSale);
-
-                    // Libera la silla
-                    if (idxSilla != -1) {
-                        sillasOcupadas.set(idxSilla, null);
-                        clientesEnSilla.get(idxSilla).setImage(null);
-                        clientesEnSilla.get(idxSilla).setVisible(false);
-                    }
-
-                    // Sumar al total acumulado y actualizar el label
-                    Random random = new Random();
-                    EventoCliente evento = eventosCliente.getOrDefault(clienteQueSale, EventoCliente.NINGUNO);
-                    int monto = 30 + random.nextInt(51); // Entre 30 y 80 dólares
-
-                    if (evento == EventoCliente.VIP) {
-                        monto *= 2;
-                        Alert alert = new Alert(Alert.AlertType.INFORMATION);
-                        alert.setTitle("¡Cliente VIP!");
-                        alert.setHeaderText(null);
-                        alert.setContentText("¡Cliente VIP! El barbero recibe el doble: $" + monto);
-                        alert.show();
-                    } else if (evento == EventoCliente.PROBLEMATICO) {
-                        // Retrasa la cola: suma 2 segundos al pago
-                        try { Thread.sleep(2000); } catch (InterruptedException ex) {}
-                        Alert alert = new Alert(Alert.AlertType.WARNING);
-                        alert.setTitle("Cliente Problemático");
-                        alert.setHeaderText(null);
-                        alert.setContentText("¡Cliente problemático! El pago se retrasó.");
-                        alert.show();
-                    }
-
-                    dineroBarberos[idxSilla] += monto;
-totalAcumulado += monto;
-labelTotalAcumulado.setText("Total Acumulado: $" + totalAcumulado);
-actualizarBarberosInfo();
-
-                    // Intenta llenar todas las sillas libres con clientes esperando
-                    for (int i = 0; i < sillasOcupadas.size(); i++) {
-                        if (sillasOcupadas.get(i) == null) {
-                            ImageView siguiente = null;
-                            for (ImageView cliente : clientes) {
-                                if (!sillasOcupadas.contains(cliente) &&
-                                    !(clientesEnCaja.isVisible() && cliente.getImage() == clientesEnCaja.getImage())) {
-                                    siguiente = cliente;
-                                    break;
-                            }
-                            }
-                            if (siguiente != null) {
-                                sillasOcupadas.set(i, siguiente);
-                                clientesEnSilla.get(i).setImage(siguiente.getImage());
-                                clientesEnSilla.get(i).setFitWidth(60);   // <-- Restaura tamaño normal
-clientesEnSilla.get(i).setFitHeight(90);  // <-- Restaura tamaño normal
-                                clientesEnSilla.get(i).setVisible(true);
-                                barrasProgreso.get(i).setProgress(0);
-                                timelines.get(i).playFromStart();
-
-                                // Animación suave al sentarse (SOLO aquí)
-                                clientesEnSilla.get(i).setTranslateY(-50);
-                                TranslateTransition transition = new TranslateTransition(Duration.seconds(0.5), clientesEnSilla.get(i));
-                                transition.setToY(0);
-                                transition.play();
-
-                                actualizarSofaYEspera.run();
-                            } else {
-                                // No hay clientes esperando, muestra "durmiendo.png"
-                                Image durmiendoImg = new Image(getClass().getResourceAsStream("/img/durmiendo.png"));
-                                clientesEnSilla.get(i).setImage(durmiendoImg);
-                                clientesEnSilla.get(i).setFitWidth(140);   // Aumenta el ancho
-clientesEnSilla.get(i).setFitHeight(140); // Aumenta el alto
-                                clientesEnSilla.get(i).setVisible(true);
-                            }
-                        }
-                    }
-                    cajaOcupada = false;
-                iniciarPagoEnCaja();
-                });
-                salida.play();
-
-                
-            });
-            pagoTimeline.playFromStart();
-        }
-        actualizarSofaYEspera.run();
-    }
-    // Método para actualizar la información de los barberos (dinero ganado)
-private void actualizarBarberosInfo() {
-    for (int i = 0; i < 3; i++) {
-        barberosData.get(i).setDinero(dineroBarberos[i]);
-        // Logro: si supera el objetivo y aún no se mostró
-        if (!logroMostrado[i] && dineroBarberos[i] >= OBJETIVO_GANANCIA) {
-            logroMostrado[i] = true;
-            Alert alert = new Alert(Alert.AlertType.INFORMATION);
-            alert.setTitle("¡Logro alcanzado!");
-            alert.setHeaderText(null);
-            alert.setContentText(barberosData.get(i).getNombre() + " ha superado el objetivo de $" + (int)OBJETIVO_GANANCIA + "!");
-            alert.show();
-        }
-    }
-    // Calcula el máximo dinero ganado
-    double max = Math.max(dineroBarberos[0], Math.max(dineroBarberos[1], dineroBarberos[2]));
-    // Resalta al barbero que va ganando
-    tablaBarberos.setRowFactory(_ -> new TableRow<BarberoInfo>() {
-        @Override
-        protected void updateItem(BarberoInfo item, boolean empty) {
-            super.updateItem(item, empty);
-            if (item == null || empty) {
-                this.setStyle("");
-            } else if (item.getDinero() == max && max > 0) {
-                this.setStyle("-fx-background-color: gold; -fx-font-weight: bold;");
-            } else {
-                this.setStyle("");
-            }
-        }
-    });
-    tablaBarberos.refresh();
-}
-
-
-
+    // Lista de nombres masculinos
+    private final String[] nombresClientes = {
+        "Carlos", "Luis", "Pedro", "Jorge", "Miguel", "David", "Juan", "Andrés", "Sergio", "Fernando", "Manuel", "Diego"
+    };
 }
