@@ -42,14 +42,25 @@
 
 
 
-1. **Clonar el repositorio**:
+## **¿Cómo ejecutar el proyecto?**
 
-   Para clonar el repositorio a tu máquina local, ejecuta el siguiente comando:
+1. **Clonar el repositorio:**
 
    ```bash
    git clone https://github.com/Dip1224/BARBERO-DORMILON-JIMENEZ--ARCANI-.git
+   ```
 
-   
+2. **Abrir el proyecto en tu IDE favorito** (IntelliJ IDEA, Eclipse, VS Code, etc.)
+
+3. **Compilar y ejecutar:**
+   - Si usas Maven:
+     ```bash
+     mvn clean javafx:run
+     ```
+   - O ejecuta la clase `BarberiaApp` desde tu IDE.
+
+4. **¡Listo!** Disfruta de la simulación y experimenta con los diferentes tipos de clientes y eventos.
+
 ## **Capturas de pantalla**
 
 ![image](https://github.com/user-attachments/assets/cc9fd5d4-c41f-492b-9af5-bba2c3df1407)
