@@ -1,3 +1,4 @@
+
 package org.example;
 
 import java.sql.Connection;
@@ -43,6 +44,12 @@ import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
 import javafx.util.Duration;
 
+
+/**
+ * Aplicación principal de la simulación de una barbería.
+ * Permite gestionar clientes, barberos, pagos y mostrar estadísticas e historial.
+ * Utiliza JavaFX para la interfaz gráfica.
+ */
 public class BarberiaApp extends Application {
 
     // --- Constantes ---
@@ -85,6 +92,11 @@ public class BarberiaApp extends Application {
     private final Map<ImageView, EventoCliente> eventosCliente = new HashMap<>();
 
     // --- Métodos de utilidad ---
+    /**
+     * Muestra una notificación visual en la esquina superior derecha.
+     * @param mensaje Texto a mostrar
+     * @param color Color de fondo de la notificación (en formato CSS)
+     */
     private void mostrarNotificacion(String mensaje, String color) {
         Label notificacion = new Label(mensaje);
         notificacion.setStyle(
@@ -117,6 +129,10 @@ public class BarberiaApp extends Application {
     }
 
     // --- Métodos de lógica ---
+    /**
+     * Actualiza la información de los barberos en la tabla y muestra notificaciones
+     * si algún barbero supera el objetivo de ganancia.
+     */
     private void actualizarBarberosInfo() {
         double max = Math.max(dineroBarberos[0], Math.max(dineroBarberos[1], dineroBarberos[2]));
         for (int i = 0; i < 3; i++) {
@@ -142,6 +158,10 @@ public class BarberiaApp extends Application {
         tablaBarberos.refresh();
     }
 
+    /**
+     * Inicia el proceso de pago en la caja para el siguiente cliente en la cola de pago.
+     * Gestiona animaciones, actualiza montos y guarda la información en la base de datos.
+     */
     void iniciarPagoEnCaja() {
         if (!colaPago.isEmpty() && !cajaOcupada) {
             cajaOcupada = true;
@@ -206,7 +226,13 @@ public class BarberiaApp extends Application {
                             mostrarNotificacion("¡Cliente VIP! El barbero recibe el doble: $" + monto, "#e67e22");
                         }
                         case PROBLEMATICO -> {
-                            try { Thread.sleep(2000); } catch (InterruptedException ex) {}
+                            // Si el cliente es problemático, simula un retraso en el pago
+                            try {
+                                Thread.sleep(2000); // Espera 2 segundos para simular el retraso
+                            } catch (InterruptedException ex) {
+                                // Si ocurre una interrupción, imprime el error (opcional)
+                                ex.printStackTrace();
+                            }
                             mostrarNotificacion("¡Cliente problemático! El pago se retrasó. Monto: $" + monto, "#c0392b");
                         }
                         default -> {
@@ -278,6 +304,10 @@ public class BarberiaApp extends Application {
     }
 
     // --- Método principal de la interfaz ---
+    /**
+     * Método principal de JavaFX. Inicializa y muestra la interfaz gráfica.
+     * @param primaryStage Ventana principal de la aplicación
+     */
     @Override
     public void start(Stage primaryStage) {
         rootPane = new StackPane();
@@ -303,6 +333,8 @@ public class BarberiaApp extends Application {
         HBox sillonesBarbero = new HBox(60);
         sillonesBarbero.setAlignment(Pos.CENTER);
         for (int i = 0; i < 3; i++) {
+            final int idxSilla = i;
+
             // Crear la imagen de la silla
             Image sillaImg = new Image(getClass().getResourceAsStream("/img/sillon.png"));
             ImageView sillaView = new ImageView(sillaImg);
@@ -313,13 +345,20 @@ public class BarberiaApp extends Application {
             ImageView clienteEnSilla = new ImageView();
             clienteEnSilla.setFitWidth(60);
             clienteEnSilla.setFitHeight(90);
-            clienteEnSilla.setVisible(false);  // Esto controla si el cliente está en la silla
+            clienteEnSilla.setVisible(false);
             clientesEnSilla.add(clienteEnSilla);
 
-            // Crear el StackPane que contendrá la silla y el cliente
+            // Imagen para mostrar el corte seleccionado (encima del cliente)
+            ImageView corteSobrepuesto = new ImageView();
+            corteSobrepuesto.setFitWidth(60);
+            corteSobrepuesto.setFitHeight(90);
+            corteSobrepuesto.setVisible(false);
+
+            // Crear el StackPane que contendrá la silla, el cliente y el corte sobrepuesto
             StackPane stackSilla = new StackPane();
-            stackSilla.getChildren().addAll(sillaView, clienteEnSilla);
-            StackPane.setAlignment(clienteEnSilla, Pos.CENTER);  // Alinea el cliente en el centro de la silla
+            stackSilla.getChildren().addAll(sillaView, clienteEnSilla, corteSobrepuesto);
+            StackPane.setAlignment(clienteEnSilla, Pos.CENTER);
+            StackPane.setAlignment(corteSobrepuesto, Pos.CENTER);
 
             // Crear la barra de progreso
             ProgressBar barra = new ProgressBar(0);
@@ -360,6 +399,166 @@ public class BarberiaApp extends Application {
             });
             timeline.setCycleCount(1);
             timelines.add(timeline);
+
+            Button btnInteractuar = new Button("Interactuar");
+            btnInteractuar.setStyle("-fx-font-size: 13px; -fx-background-color: #3498db; -fx-text-fill: white;");
+            btnInteractuar.setDisable(false);
+
+            // Barra de selección de corte (inicialmente oculta)
+            HBox barraCortes = new HBox(15);
+            barraCortes.setAlignment(Pos.CENTER_LEFT);
+            barraCortes.setVisible(false);
+            barraCortes.setOpacity(0);
+            barraCortes.setStyle("-fx-background-color: #f5f5f5; -fx-border-color: #2980b9; -fx-border-radius: 10; -fx-background-radius: 10; -fx-padding: 10;");
+
+            // --- Botón Interactuar ---
+            btnInteractuar.setOnAction(e -> {
+                // Si el menú de cortes ya está visible, ciérralo y no hagas nada más
+                if (barraCortes.isVisible()) {
+                    Timeline anim = new Timeline(
+                        new KeyFrame(Duration.ZERO,
+                            new KeyValue(barraCortes.opacityProperty(), 1)
+                        ),
+                        new KeyFrame(Duration.seconds(0.2),
+                            new KeyValue(barraCortes.opacityProperty(), 0)
+                        )
+                    );
+                    anim.setOnFinished(ev -> {
+                        barraCortes.setVisible(false);
+                        barraCortes.setTranslateX(0);
+                    });
+                    anim.play();
+                    // Reanuda el timeline del corte si estaba pausado
+                    timelines.get(idxSilla).play();
+                    return;
+                }
+
+                ImageView clienteActual = sillasOcupadas.get(idxSilla);
+                if (clienteActual != null && clienteActual.getImage() != null) {
+                    final Integer personaDetectada;
+                    Object prop = clienteActual.getProperties().get("personaNum");
+                    if (prop instanceof Integer) {
+                        personaDetectada = (Integer) prop;
+                    } else {
+                        mostrarNotificacion("No se pudo identificar la persona para mostrar su menú.", "#e67e22");
+                        return;
+                    }
+                    String carpetaCortes = "/img/ScortesP" + personaDetectada + "/";
+                    List<String> cortes = new ArrayList<>();
+                    List<String> cortesFinales = new ArrayList<>();
+                    for (int c = 1; c <= 3; c++) {
+                        cortes.add("corte" + c + ".png");
+                        cortesFinales.add("Persona" + personaDetectada + "C" + c + ".png");
+                    }
+                    boolean hayCortes = false;
+                    for (String corte : cortes) {
+                        try {
+                            Image test = new Image(getClass().getResourceAsStream(carpetaCortes + corte));
+                            if (!test.isError() && test.getWidth() > 1) {
+                                hayCortes = true;
+                                break;
+                            }
+                        } catch (Exception ex) {}
+                    }
+                    if (!hayCortes) {
+                        mostrarNotificacion("No hay menú de cortes para esta persona.", "#e67e22");
+                        return;
+                    }
+
+                    final double anchoFinal = 60;
+                    final double altoFinal = 90;
+
+                    barraCortes.getChildren().clear();
+                    for (int c = 0; c < cortes.size(); c++) {
+                        Button btnCorte = new Button();
+                        try {
+                            Image imgCorte = new Image(getClass().getResourceAsStream(carpetaCortes + cortes.get(c)));
+                            if (!imgCorte.isError() && imgCorte.getWidth() > 1) {
+                                ImageView imgCorteView = new ImageView(imgCorte);
+                                imgCorteView.setFitWidth(50); imgCorteView.setFitHeight(50);
+                                btnCorte.setGraphic(imgCorteView);
+                            } else {
+                                continue;
+                            }
+                        } catch (Exception ex) {
+                            continue;
+                        }
+                        final String corteFinal = cortesFinales.get(c);
+                        btnCorte.setOnAction(ev -> {
+                            String classpath = carpetaCortes + corteFinal;
+                            String absPath = System.getProperty("user.dir") + "/src/main/resources" + carpetaCortes + corteFinal;
+                            java.net.URL url = getClass().getResource(classpath);
+                            java.io.File f = new java.io.File(absPath);
+
+                            Image corteImgFinal = null;
+                            boolean loaded = false;
+                            try {
+                                if (url != null) {
+                                    corteImgFinal = new Image(url.toExternalForm());
+                                    loaded = !corteImgFinal.isError() && corteImgFinal.getWidth() > 1;
+                                }
+                                if (!loaded && f.exists()) {
+                                    corteImgFinal = new Image(f.toURI().toString());
+                                    loaded = !corteImgFinal.isError() && corteImgFinal.getWidth() > 1;
+                                }
+                                if (!loaded) {
+                                    mostrarNotificacion("No se pudo cargar el corte: " + corteFinal, "#c0392b");
+                                    return;
+                                }
+                                clientesEnSilla.get(idxSilla).setImage(corteImgFinal);
+                                clientesEnSilla.get(idxSilla).setFitWidth(anchoFinal);
+                                clientesEnSilla.get(idxSilla).setFitHeight(altoFinal);
+                                clientesEnSilla.get(idxSilla).setVisible(true);
+                                ImageView clienteActual2 = sillasOcupadas.get(idxSilla);
+                                if (clienteActual2 != null) {
+                                    clienteActual2.setImage(corteImgFinal);
+                                    clienteActual2.setFitWidth(anchoFinal);
+                                    clienteActual2.setFitHeight(altoFinal);
+                                }
+                            } catch (Exception ex) {
+                                mostrarNotificacion("No se pudo cargar el corte: " + corteFinal, "#c0392b");
+                                return;
+                            }
+                            Timeline anim = new Timeline(
+                                new KeyFrame(Duration.ZERO,
+                                    new KeyValue(barraCortes.opacityProperty(), 1),
+                                    new KeyValue(barraCortes.translateXProperty(), 0)
+                                ),
+                                new KeyFrame(Duration.seconds(0.3),
+                                    new KeyValue(barraCortes.opacityProperty(), 0),
+                                    new KeyValue(barraCortes.translateXProperty(), -100)
+                                )
+                            );
+                            anim.setOnFinished(ev2 -> {
+                                barraCortes.setVisible(false);
+                                barraCortes.setTranslateX(0);
+                            });
+                            anim.play();
+                            timelines.get(idxSilla).play();
+                        });
+                        barraCortes.getChildren().add(btnCorte);
+                    }
+                    barraCortes.setVisible(true);
+                    barraCortes.setOpacity(0);
+                    barraCortes.setTranslateX(0);
+                    Timeline anim = new Timeline(
+                        new KeyFrame(Duration.ZERO,
+                            new KeyValue(barraCortes.opacityProperty(), 0)
+                        ),
+                        new KeyFrame(Duration.seconds(0.3),
+                            new KeyValue(barraCortes.opacityProperty(), 1)
+                        )
+                    );
+                    anim.play();
+                    timelines.get(idxSilla).pause();
+                }
+            });
+
+            // Crear un VBox para la barra, el texto, el botón y la barra de cortes debajo
+            VBox barraYTextoYBoton = new VBox(5, barra, labelBarbero, btnInteractuar, barraCortes);
+            barraYTextoYBoton.setAlignment(Pos.CENTER_LEFT);
+
+            sillaConBarra.getChildren().add(barraYTextoYBoton);
         }
 
 
@@ -641,6 +840,7 @@ public class BarberiaApp extends Application {
 
             clientes.add(nuevoCliente);
             clienteNumeros.put(nuevoCliente, clienteContador);
+            nuevoCliente.getProperties().put("personaNum", clienteActual[0]);
             clienteContador++;
 
             clienteActual[0]++;
@@ -686,6 +886,10 @@ public class BarberiaApp extends Application {
             clientePrioridad.setFitWidth(60);
             clientePrioridad.setFitHeight(90);
             clienteNumeros.put(clientePrioridad, clienteContador);
+            // --- ASIGNA personaNum SI ES persona3.png ---
+            if (imgPath.contains("persona3.png")) {
+                clientePrioridad.getProperties().put("personaNum", 3);
+            }
             clienteContador++;
 
             String nombre;
@@ -706,9 +910,7 @@ public class BarberiaApp extends Application {
             Tooltip tooltip = new Tooltip(nombre);
             Tooltip.install(clientePrioridad, tooltip);
             clientePrioridad.setStyle("-fx-effect: dropshadow(gaussian, gold, 15, 0.5, 0, 0);");
-            // Mostrar notificación con el nombre del cliente VIP creado
             mostrarNotificacion("Nuevo cliente VIP: " + nombre, "#e67e22");
-
 
             // Busca la primera silla libre y lo sienta de inmediato
             boolean sentado = false;
@@ -722,7 +924,6 @@ public class BarberiaApp extends Application {
                     clientesEnSilla.get(i).setFitHeight(90);
                     clientesEnSilla.get(i).setVisible(true);
 
-                    // AGREGA ESTO:
                     TranslateTransition transition = new TranslateTransition(Duration.seconds(0.5), clientesEnSilla.get(i));
                     transition.setFromY(-50);
                     transition.setToY(0);
@@ -732,7 +933,6 @@ public class BarberiaApp extends Application {
                     break;
                 }
             }
-            // Si no hay silla libre, lo inserta en una posición aleatoria entre los primeros 4 del sofá
             if (!sentado) {
                 int pos = random.nextInt(Math.min(sofaClientes.getChildren().size() + 1, 4)); // 0 a 4
                 clientes.add(pos, clientePrioridad);
@@ -784,6 +984,10 @@ public class BarberiaApp extends Application {
     }
 
     // Método para obtener el número de día (conteo de registros en la tabla dias)
+    /**
+     * Obtiene el número de día actual (conteo de registros en la tabla 'dias').
+     * @return número de día actual
+     */
     private int obtenerNumeroDiaActual() {
         int count = 1;
         try (Connection conn = DBUtil.getConnection();
@@ -799,6 +1003,9 @@ public class BarberiaApp extends Application {
     }
 
     // Método para mostrar el historial de días en una ventana nueva
+    /**
+     * Muestra una ventana con el historial de días registrados en la base de datos.
+     */
     private void mostrarHistorialDias() {
         Stage stage = new Stage();
         VBox root = new VBox(10);
@@ -868,6 +1075,9 @@ public class BarberiaApp extends Application {
     }
 
     // Clase auxiliar para mostrar días en la tabla
+    /**
+     * Clase auxiliar para mostrar el resumen de días en la tabla de historial.
+     */
     public static class DiaResumen {
         private final int numeroDia; // número consecutivo
         private final int idReal;    // id real de la base de datos
@@ -883,6 +1093,11 @@ public class BarberiaApp extends Application {
     }
 
     // Método para mostrar las transacciones de un día específico
+    /**
+     * Muestra una ventana con las transacciones realizadas en un día específico.
+     * @param idDia ID real del día en la base de datos
+     * @param numeroDia Número consecutivo del día
+     */
     private void mostrarTransaccionesDeDia(int idDia, int numeroDia) {
         Stage stage = new Stage();
         VBox root = new VBox(10);
@@ -933,6 +1148,10 @@ public class BarberiaApp extends Application {
         stage.show();
     }
 
+    /**
+     * Método principal. Lanza la aplicación JavaFX.
+     * @param args Argumentos de línea de comandos
+     */
     public static void main(String[] args) {
         launch(args);
     }
