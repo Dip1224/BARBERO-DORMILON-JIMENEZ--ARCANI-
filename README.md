@@ -1,7 +1,8 @@
-
+ 
 # **Barbero Dormilón - Simulación de Barbería**
 
 **Barbero Dormilón** es una aplicación interactiva desarrollada en **JavaFX** que simula la gestión de una **barbería** con múltiples **barberos**, **clientes normales**, **VIP** y **problemáticos**, colas de espera, caja registradora y eventos aleatorios. El proyecto está pensado como una herramienta didáctica para comprender la **concurrencia**, la **gestión de recursos**, la **interacción gráfica** en **Java** y el uso de **bases de datos** para persistencia real.
+
 
 
 ## **Características principales**
